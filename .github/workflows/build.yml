@@ -1,0 +1,62 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Validate buildozer.spec
+      run: |
+        echo "=== Current buildozer.spec ==="
+        cat buildozer.spec
+        echo "============================"
+        
+        # 确保权限配置正确
+        if grep -q "WRITE_EXTERNAL_STORAGE" buildozer.spec; then
+          echo "::error::Deprecated permission detected!"
+          sed -i '/WRITE_EXTERNAL_STORAGE/d' buildozer.spec
+          echo "Removed WRITE_EXTERNAL_STORAGE"
+        fi
+
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: "3.10"
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          git zip unzip openjdk-17-jdk \
+          python3-pip autoconf libtool \
+          pkg-config zlib1g-dev libncurses5-dev \
+          libtinfo6 cmake libffi-dev libssl-dev
+
+    - name: Install Buildozer
+      run: pip install buildozer cython==0.29.33
+
+    - name: Build APK
+      run: |
+        buildozer android clean
+        buildozer -v android debug
+
+    - name: Verify APK
+      run: |
+        if [ ! -f bin/*.apk ]; then
+          echo "::error::APK file not found!"
+          buildozer android deploy list  # 显示构建目标
+          exit 1
+        fi
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release
+        path: bin/*.apk
